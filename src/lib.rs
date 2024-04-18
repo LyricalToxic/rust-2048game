@@ -1,27 +1,17 @@
 #![feature(inherent_associated_types)]
 
 use std::cmp::max;
-use std::collections::HashMap;
 
-use graphics::{CharacterCache, clear, Context, Graphics, Line, rectangle, Text};
-use graphics::color::{BLACK, GREEN, WHITE};
-use graphics::grid::Grid;
-use graphics::line::Shape;
+use graphics::{CharacterCache, Context, Graphics, rectangle, Text};
+use graphics::color::{BLACK, WHITE};
 use graphics::math::Scalar;
-use opengl_graphics::{GlGraphics, OpenGL};
-use opengl_graphics::GlyphCache;
-use piston::{Button, ButtonState};
-use piston::input::{ButtonArgs, RenderArgs, UpdateArgs};
-use piston::Key;
 use piston_window::prelude::*;
-use rand::{random, Rng, thread_rng};
+use rand::Rng;
 
-use game_field::game_field::GameField;
-
+pub mod layout;
 pub mod grid_cell;
 pub mod game_field;
 pub mod game_cell;
-pub mod layout;
 
 pub struct Point {
     pub x: Scalar,

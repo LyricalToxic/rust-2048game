@@ -3,12 +3,15 @@ use graphics::clear;
 use graphics::color::GREEN;
 use opengl_graphics::{GlGraphics, GlyphCache, TextureSettings};
 use piston::{Button, ButtonArgs, ButtonState, Key, RenderArgs, UpdateArgs};
+
 use crate::{Direction, GameState};
-use crate::layout::layout::Layout2048;
+use crate::layout::Layout2048;
+
 pub struct GameField {
     backend: GlGraphics,
     layout: Layout2048,
     direction: Direction,
+    press_time: u32,
 }
 
 
@@ -23,6 +26,7 @@ impl GameField {
             backend,
             layout: layout2048,
             direction: Direction::Release,
+            press_time: 0,
         }
     }
     pub fn render(&mut self, args: &RenderArgs) {
@@ -34,24 +38,35 @@ impl GameField {
         });
     }
     pub fn update(&mut self, args: UpdateArgs) {
+        let press_frequency = 15;
         match self.direction {
             Direction::Right => {
-                self.layout.move_right();
-                self.direction = Direction::Release;
+                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                    self.layout.move_right();
+                }
+                self.press_time += 1;
             }
             Direction::Down => {
-                self.layout.move_down();
-                self.direction = Direction::Release;
+                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                    self.layout.move_down();
+                }
+                self.press_time += 1;
             }
             Direction::Up => {
-                self.layout.move_up();
-                self.direction = Direction::Release;
+                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                    self.layout.move_up();
+                }
+                self.press_time += 1;
             }
             Direction::Left => {
-                self.layout.move_left();
-                self.direction = Direction::Release;
+                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                    self.layout.move_left();
+                }
+                self.press_time += 1;
             }
-            Direction::Release => {}
+            Direction::Release => {
+                self.press_time = 0;
+            }
         }
 
         match self.layout.game_state {
