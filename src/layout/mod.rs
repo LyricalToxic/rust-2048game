@@ -2,41 +2,44 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use graphics::{CharacterCache, Context, Graphics, Line};
-use graphics::color::WHITE;
-use graphics::grid::Grid;
-use graphics::line::Shape;
+use graphics::line::Shape::Round;
 use rand::{random, thread_rng};
+use rand::distributions::uniform::SampleBorrow;
 use rand::prelude::SliceRandom;
 
-use crate::{ConsoleLogLayout2048, GameState};
+use crate::console_log_box::ConsoleLogBox;
+use crate::constants::{CELL_BACKGROUND_NEW_COLOR, GRID_CELL_SIZE, GRID_LINE_COLOR, GRID_LINE_RADIUS, GRID_OFFSET, P_FOUR_VALUE_CELL};
 use crate::game_cell::Cell2048;
+use crate::GameState;
 use crate::grid_cell::GridCell2048;
-
-const GRID_CELL_SIZE: f64 = 100.0;
-const P_FOUR_VALUE_CELL: f64 = 0.1;
+use crate::position_grid::PositionGrid;
+use crate::score::Score;
 
 pub struct Layout2048 {
-    grid: Grid,
+    grid: PositionGrid,
     cells: GridCell2048,
     pub game_state: GameState,
-    console_log: ConsoleLogLayout2048,
+    console_log: ConsoleLogBox,
     shape_size: usize,
+    score: Score,
 }
 
 impl Layout2048 {
     pub fn new(shape_size: usize) -> Self {
-        let grid = Grid {
-            cols: shape_size as u32,
-            rows: shape_size as u32,
-            units: GRID_CELL_SIZE,
-        };
+        let grid = PositionGrid::new(
+            shape_size,
+            shape_size,
+            GRID_CELL_SIZE,
+            Some(GRID_OFFSET),
+        );
         let cells = Layout2048::init_cells(shape_size);
         Layout2048 {
             shape_size: shape_size,
             grid: grid,
             cells: cells,
             game_state: GameState::GameInitialized,
-            console_log: ConsoleLogLayout2048::new(),
+            console_log: ConsoleLogBox::new(),
+            score: Score::new(),
         }
     }
     fn init_cells(shape_size: usize) -> GridCell2048 {
@@ -46,6 +49,7 @@ impl Layout2048 {
     pub(crate) fn new_game(&mut self) {
         self.console_log.add_message(String::from("NEW GAME"));
         self.clear_grid();
+        self.score = Score::new();
 
         self.add_new_cell(2);
         let possibility: f64 = random();
@@ -53,6 +57,14 @@ impl Layout2048 {
             self.add_new_cell(4);
         }
         self.game_state = GameState::InGame;
+    }
+    pub(crate) fn spawn_2048(&mut self) {
+        match self.game_state {
+            GameState::InGame => {
+                self.add_new_cell(2048);
+            }
+            _ => {}
+        }
     }
     fn clear_grid(&mut self) {
         self.cells = Layout2048::init_cells(self.shape_size)
@@ -62,12 +74,14 @@ impl Layout2048 {
         if self.is_field_fulfilled() {
             return false;
         }
+        self.score.inc(value as u64);
 
         let empty_cells = self.cells.get_empty_cells();
         let (chosen_row, chosen_col) = *empty_cells.choose(&mut thread_rng()).unwrap();
-        let new_cell = Cell2048::new(value, chosen_row, chosen_col);
+        let new_cell = Cell2048::new(value, chosen_row, chosen_col, Some(CELL_BACKGROUND_NEW_COLOR));
         self.cells.insert(&new_cell);
-        let message = format!("Added cell with value: {value}, row = {chosen_row} col = {chosen_col}");
+        let message =
+            format!("Added cell with value: {value}, row = {chosen_row} col = {chosen_col}");
         self.console_log.add_message(message);
         return true;
     }
@@ -77,18 +91,27 @@ impl Layout2048 {
             C: CharacterCache,
             G: Graphics<Texture=<C as CharacterCache>::Texture>,
     {
-        let line = Line { color: WHITE, radius: 1.0, shape: Shape::Square };
+        let line = Line {
+            color: GRID_LINE_COLOR,
+            radius: GRID_LINE_RADIUS,
+            shape: Round,
+        };
         self.grid.draw(&line, &c.draw_state, c.transform, gl);
         for (row, col, cell) in self.cells.enumerate() {
-            let pos_x = self.grid.x_pos((col as u32, row as u32));
-            let pos_y = self.grid.y_pos((col as u32, row as u32));
+            let (pos_x, pos_y) = self.grid.get_pos((col, row));
             cell.borrow().draw(pos_x, pos_y, GRID_CELL_SIZE, c, gl, glyph_cache);
         }
-        self.console_log.draw(c, gl, glyph_cache)
+        self.console_log.draw(c, gl, glyph_cache);
+
+        let grid_rectangle = self.grid.get_rectangle_pos();
+        let score_pos_x = grid_rectangle[0] + (grid_rectangle[2] - grid_rectangle[0]) / 2.0;
+        let score_pos_y = grid_rectangle[3] + 50.0;
+        self.score.draw_pos(score_pos_x, score_pos_y, c, gl, c.transform, glyph_cache);
     }
     pub(crate) fn move_right(&mut self) {
         match self.game_state {
             GameState::InGame => {
+                self.before_moving_event();
                 for row in self.cells.rows() {
                     for cell in row.iter().rev() {
                         let mut current_col = cell.borrow().col;
@@ -96,7 +119,10 @@ impl Layout2048 {
                         while next_col < self.shape_size {
                             let current_cell = self.cells.get_cell(cell.borrow().row, current_col);
                             let next_cell = self.cells.get_cell(cell.borrow().row, next_col);
-                            self.move_cell(&mut current_cell.borrow_mut(), &mut next_cell.borrow_mut());
+                            self.move_cell(
+                                &mut current_cell.borrow_mut(),
+                                &mut next_cell.borrow_mut(),
+                            );
                             current_col = next_col;
                             next_col = current_col + 1;
                         }
@@ -107,6 +133,7 @@ impl Layout2048 {
                 if possibility < P_FOUR_VALUE_CELL {
                     self.add_new_cell(4);
                 }
+                self.after_moving_event()
             }
             _ => {}
         }
@@ -114,6 +141,7 @@ impl Layout2048 {
     pub(crate) fn move_down(&mut self) {
         match self.game_state {
             GameState::InGame => {
+                self.before_moving_event();
                 for row in self.cells.rows().rev() {
                     for cell in row.iter() {
                         let mut current_row = cell.borrow().row;
@@ -121,7 +149,10 @@ impl Layout2048 {
                         while next_row < self.shape_size {
                             let current_cell = self.cells.get_cell(current_row, cell.borrow().col);
                             let next_cell = self.cells.get_cell(next_row, cell.borrow().col);
-                            self.move_cell(&mut current_cell.borrow_mut(), &mut next_cell.borrow_mut());
+                            self.move_cell(
+                                &mut current_cell.borrow_mut(),
+                                &mut next_cell.borrow_mut(),
+                            );
                             current_row = next_row;
                             next_row = current_row + 1;
                         }
@@ -132,6 +163,7 @@ impl Layout2048 {
                 if possibility < P_FOUR_VALUE_CELL {
                     self.add_new_cell(4);
                 }
+                self.after_moving_event()
             }
             _ => {}
         }
@@ -139,14 +171,19 @@ impl Layout2048 {
     pub(crate) fn move_left(&mut self) {
         match self.game_state {
             GameState::InGame => {
+                self.before_moving_event();
                 for row in self.cells.rows() {
                     for cell in row.iter() {
                         let mut current_col = cell.borrow().col;
                         let mut prev_col = current_col as isize - 1;
                         while prev_col >= 0 {
                             let current_cell = self.cells.get_cell(cell.borrow().row, current_col);
-                            let next_cell = self.cells.get_cell(cell.borrow().row, prev_col as usize);
-                            self.move_cell(&mut current_cell.borrow_mut(), &mut next_cell.borrow_mut());
+                            let next_cell =
+                                self.cells.get_cell(cell.borrow().row, prev_col as usize);
+                            self.move_cell(
+                                &mut current_cell.borrow_mut(),
+                                &mut next_cell.borrow_mut(),
+                            );
                             current_col = prev_col as usize;
                             prev_col = current_col as isize - 1;
                         }
@@ -157,6 +194,7 @@ impl Layout2048 {
                 if possibility < P_FOUR_VALUE_CELL {
                     self.add_new_cell(4);
                 }
+                self.after_moving_event()
             }
             _ => {}
         }
@@ -164,14 +202,19 @@ impl Layout2048 {
     pub(crate) fn move_up(&mut self) {
         match self.game_state {
             GameState::InGame => {
+                self.before_moving_event();
                 for row in self.cells.rows() {
                     for cell in row.iter() {
                         let mut current_row = cell.borrow().row;
                         let mut prev_row = current_row as isize - 1;
                         while prev_row >= 0 {
                             let current_cell = self.cells.get_cell(current_row, cell.borrow().col);
-                            let next_cell = self.cells.get_cell(prev_row as usize, cell.borrow().col);
-                            self.move_cell(&mut current_cell.borrow_mut(), &mut next_cell.borrow_mut());
+                            let next_cell =
+                                self.cells.get_cell(prev_row as usize, cell.borrow().col);
+                            self.move_cell(
+                                &mut current_cell.borrow_mut(),
+                                &mut next_cell.borrow_mut(),
+                            );
                             current_row = prev_row as usize;
                             prev_row = current_row as isize - 1;
                         }
@@ -182,8 +225,15 @@ impl Layout2048 {
                 if possibility < P_FOUR_VALUE_CELL {
                     self.add_new_cell(4);
                 }
+                self.after_moving_event()
             }
             _ => {}
+        }
+    }
+    fn before_moving_event(&mut self) {}
+    fn after_moving_event(&mut self) {
+        for cell in self.cells.flat_iter() {
+            cell.borrow_mut().update_background();
         }
     }
 
@@ -192,31 +242,34 @@ impl Layout2048 {
             return;
         }
         if next_cell.is_empty() {
-            next_cell.devour(current_cell);
+            next_cell.devour_soft(current_cell);
             current_cell.reset();
             return;
         }
         if current_cell == next_cell {
-            next_cell.accumulate(current_cell);
+            let accumulated_value = next_cell.accumulate(current_cell);
+            self.score.inc(accumulated_value as u64);
             current_cell.reset();
             return;
         }
     }
-    fn print_cells(&self) {
-        for cell in self.cells.flat_iter() {
-            println!("cell = {:?}", cell);
-        }
-    }
     fn is_field_fulfilled(&self) -> bool {
-        !self.cells.flat_iter().any(|cell: Rc<RefCell<Cell2048>>| {
-            cell.borrow().is_empty()
-        })
+        !self
+            .cells
+            .flat_iter()
+            .any(|cell: Rc<RefCell<Cell2048>>| cell.borrow().is_empty())
     }
 
     pub(crate) fn check_game_over(&mut self) {
         if self.is_game_over() {
             self.game_state = GameState::GameOver;
             self.console_log.add_message(String::from("Game over"));
+        }
+    }
+    pub(crate) fn check_game_won(&mut self) {
+        if self.is_game_won() {
+            self.game_state = GameState::GameWon;
+            self.console_log.add_message(String::from(format!("Congratulations! You win. Score: {}", self.score.get())));
         }
     }
 
@@ -244,5 +297,10 @@ impl Layout2048 {
             }
         }
         return true;
+    }
+    fn is_game_won(&self) -> bool {
+        self.cells.flat_iter().any(|cell2048: Rc<RefCell<Cell2048>>| {
+            *cell2048.borrow().value == 2048
+        })
     }
 }

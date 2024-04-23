@@ -1,11 +1,11 @@
 extern crate game2048;
 
+use game2048::game_field::GameField;
 use opengl_graphics::*;
-use piston::event_loop::{Events, EventSettings};
+use piston::event_loop::{EventSettings, Events};
 use piston::input::{ButtonEvent, RenderEvent, UpdateEvent};
 use piston::window::WindowSettings;
 use sdl2_window::Sdl2Window;
-use game2048::game_field::game_field::GameField;
 
 fn main() {
     let mut window: Sdl2Window = WindowSettings::new("game2048", [900, 900])

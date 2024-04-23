@@ -1,10 +1,10 @@
 use glutin_window::OpenGL;
 use graphics::clear;
-use graphics::color::GREEN;
 use opengl_graphics::{GlGraphics, GlyphCache, TextureSettings};
 use piston::{Button, ButtonArgs, ButtonState, Key, RenderArgs, UpdateArgs};
 
 use crate::{Direction, GameState};
+use crate::constants::WINDOW_BACKGROUND_COLOR;
 use crate::layout::Layout2048;
 
 pub struct GameField {
@@ -13,7 +13,6 @@ pub struct GameField {
     direction: Direction,
     press_time: u32,
 }
-
 
 impl GameField {
     pub fn new() -> Self {
@@ -30,36 +29,47 @@ impl GameField {
         }
     }
     pub fn render(&mut self, args: &RenderArgs) {
-        let mut glyph_cache = GlyphCache::new("./assets/fonts/FiraSans-Regular.ttf", (), TextureSettings::new()).unwrap();
+        let mut glyph_cache = GlyphCache::new(
+            "./assets/fonts/FiraSans-Regular.ttf",
+            (),
+            TextureSettings::new(),
+        )
+            .unwrap();
 
         self.backend.draw(args.viewport(), |c, gl| {
-            clear(GREEN, gl);
+            clear(WINDOW_BACKGROUND_COLOR, gl);
             self.layout.draw(c, gl, &mut glyph_cache);
         });
     }
-    pub fn update(&mut self, args: UpdateArgs) {
+    pub fn update(&mut self, _args: UpdateArgs) {
         let press_frequency = 15;
+        let should_move = self.press_time == 0
+            || (self.press_time > 100 && self.press_time % press_frequency == 0);
         match self.direction {
             Direction::Right => {
-                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                if should_move
+                {
                     self.layout.move_right();
                 }
                 self.press_time += 1;
             }
             Direction::Down => {
-                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                if should_move
+                {
                     self.layout.move_down();
                 }
                 self.press_time += 1;
             }
             Direction::Up => {
-                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                if should_move
+                {
                     self.layout.move_up();
                 }
                 self.press_time += 1;
             }
             Direction::Left => {
-                if self.press_time == 0 || (self.press_time > 100 && self.press_time % press_frequency == 0) {
+                if should_move
+                {
                     self.layout.move_left();
                 }
                 self.press_time += 1;
@@ -72,8 +82,10 @@ impl GameField {
         match self.layout.game_state {
             GameState::GameOver => {}
             GameState::GameInitialized => {}
+            GameState::GameWon => {}
             GameState::InGame => {
                 self.layout.check_game_over();
+                self.layout.check_game_won();
             }
         }
     }
@@ -105,6 +117,9 @@ impl GameField {
             }
             (Button::Keyboard(Key::Space), ButtonState::Press) => {
                 self.layout.new_game();
+            }
+            (Button::Keyboard(Key::W), ButtonState::Press) => {
+                self.layout.spawn_2048();
             }
             _ => {}
         }
