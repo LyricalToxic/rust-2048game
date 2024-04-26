@@ -29,17 +29,18 @@ static CELL_VALUES_COLORS: Lazy<HashMap<usize, Color>> = Lazy::new(|| {
     ])
 });
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Cell2048 {
     pub value: Box<usize>,
     pub row: usize,
     pub col: usize,
     pub background: Color,
     pub padding: Scalar,
+    pub animation_time_ticks: u64,
 }
 
 impl Cell2048 {
-    pub(crate) fn new(value: usize, row: usize, col: usize, background: Option<Color>) -> Self {
+    pub(crate) fn new(value: usize, row: usize, col: usize, background: Option<Color>, animation_time_ticks: u64) -> Self {
         let background_color = background.unwrap_or_else(|| CELL_BACKGROUND_COLOR);
         Cell2048 {
             value: Box::new(value),
@@ -47,6 +48,7 @@ impl Cell2048 {
             col: col,
             background: background_color,
             padding: 3.0 as Scalar,
+            animation_time_ticks: animation_time_ticks,
         }
     }
     pub(crate) fn is_empty(&self) -> bool {
@@ -64,14 +66,17 @@ impl Cell2048 {
         C: CharacterCache,
         G: Graphics<Texture=<C as CharacterCache>::Texture>,
     {
-        let background_center_x: Scalar = (pos_x + self.padding);
-        let background_center_y: Scalar = (pos_y + self.padding);
+        let scale = (1.0 / (1.0 + self.animation_time_ticks as Scalar).log2()).min(1.0) as Scalar;
+        let square_size = (grid_cell_size - self.padding * 2.0) * scale;
+        let scale_padding = (grid_cell_size - square_size - self.padding * 2.0) / 2.0;
+        let background_center_x: Scalar = (pos_x + self.padding) + scale_padding;
+        let background_center_y: Scalar = (pos_y + self.padding) + scale_padding;
         Rectangle::new_round(self.background, GRID_LINE_RADIUS)
             .draw_tri(
                 square(
                     background_center_x,
                     background_center_y,
-                    grid_cell_size - self.padding * 2.0,
+                    square_size,
                 ),
                 &c.draw_state,
                 c.transform,
@@ -80,11 +85,12 @@ impl Cell2048 {
 
         let str_value = self.to_string();
         let value_length = str_value.len();
+        let font_size = (TEXT_FONT_SIZE as Scalar * scale) as u32;
         let text_center_x: Scalar = pos_x + (grid_cell_size / 2.0)
-            - (value_length as Scalar * TEXT_FONT_SIZE as Scalar / 4.0);
+            - (value_length as Scalar * font_size as Scalar / 4.0);
         let text_center_y: Scalar =
-            pos_y + (grid_cell_size / 2.0) + (TEXT_FONT_SIZE as Scalar / 4.0);
-        Text::new_color(RED, TEXT_FONT_SIZE)
+            pos_y + (grid_cell_size / 2.0) + (font_size as Scalar / 4.0);
+        Text::new_color(RED, font_size)
             .draw_pos(
                 &str_value,
                 [text_center_x, text_center_y],
@@ -95,6 +101,11 @@ impl Cell2048 {
             )
             .unwrap();
     }
+    pub fn update(&mut self) {
+        if self.animation_time_ticks > 0 {
+            self.animation_time_ticks -= 1
+        }
+    }
     fn to_string(&self) -> String {
         if *self.value == 0 {
             return String::from("");
@@ -104,6 +115,7 @@ impl Cell2048 {
     pub fn devour(&mut self, cell: &Cell2048) {
         self.value = Box::new(*cell.value);
         self.background = cell.background;
+        self.animation_time_ticks = cell.animation_time_ticks;
     }
     pub fn devour_soft(&mut self, cell: &Cell2048) {
         self.value = Box::new(*cell.value);
@@ -141,5 +153,11 @@ impl PartialEq for Cell2048 {
 impl PartialOrd for Cell2048 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.value.partial_cmp(&other.value)
+    }
+}
+
+impl Clone for Cell2048 {
+    fn clone(&self) -> Self {
+        Cell2048::new(self.value.borrow().clone(), self.row, self.col, Some(self.background), self.animation_time_ticks)
     }
 }

@@ -88,6 +88,7 @@ impl GameField {
                 self.layout.check_game_won();
             }
         }
+        self.layout.update()
     }
     pub fn on_button(&mut self, button: &ButtonArgs) {
         match (button.button, button.state) {
@@ -120,6 +121,9 @@ impl GameField {
             }
             (Button::Keyboard(Key::W), ButtonState::Press) => {
                 self.layout.spawn_2048();
+            }
+            (Button::Keyboard(Key::Backspace), ButtonState::Press) => {
+                self.layout.turn_back();
             }
             _ => {}
         }

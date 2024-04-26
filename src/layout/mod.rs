@@ -8,12 +8,13 @@ use rand::distributions::uniform::SampleBorrow;
 use rand::prelude::SliceRandom;
 
 use crate::console_log_box::ConsoleLogBox;
-use crate::constants::{CELL_BACKGROUND_NEW_COLOR, GRID_CELL_SIZE, GRID_LINE_COLOR, GRID_LINE_RADIUS, GRID_OFFSET, P_FOUR_VALUE_CELL};
+use crate::constants::{GRID_CELL_SIZE, GRID_LINE_COLOR, GRID_LINE_RADIUS, GRID_OFFSET, P_FOUR_VALUE_CELL};
 use crate::game_cell::Cell2048;
 use crate::GameState;
 use crate::grid_cell::GridCell2048;
 use crate::position_grid::PositionGrid;
 use crate::score::Score;
+use crate::turns_history::TurnsHistory;
 
 pub struct Layout2048 {
     grid: PositionGrid,
@@ -22,6 +23,7 @@ pub struct Layout2048 {
     console_log: ConsoleLogBox,
     shape_size: usize,
     score: Score,
+    history_stack: TurnsHistory,
 }
 
 impl Layout2048 {
@@ -40,6 +42,7 @@ impl Layout2048 {
             game_state: GameState::GameInitialized,
             console_log: ConsoleLogBox::new(),
             score: Score::new(),
+            history_stack: TurnsHistory::new(5),
         }
     }
     fn init_cells(shape_size: usize) -> GridCell2048 {
@@ -50,13 +53,14 @@ impl Layout2048 {
         self.console_log.add_message(String::from("NEW GAME"));
         self.clear_grid();
         self.score = Score::new();
-
+        self.before_moving_event();
         self.add_new_cell(2);
         let possibility: f64 = random();
         if possibility < P_FOUR_VALUE_CELL {
             self.add_new_cell(4);
         }
         self.game_state = GameState::InGame;
+        self.after_moving_event();
     }
     pub(crate) fn spawn_2048(&mut self) {
         match self.game_state {
@@ -78,7 +82,7 @@ impl Layout2048 {
 
         let empty_cells = self.cells.get_empty_cells();
         let (chosen_row, chosen_col) = *empty_cells.choose(&mut thread_rng()).unwrap();
-        let new_cell = Cell2048::new(value, chosen_row, chosen_col, Some(CELL_BACKGROUND_NEW_COLOR));
+        let new_cell = Cell2048::new(value, chosen_row, chosen_col, None, 10);
         self.cells.insert(&new_cell);
         let message =
             format!("Added cell with value: {value}, row = {chosen_row} col = {chosen_col}");
@@ -107,6 +111,11 @@ impl Layout2048 {
         let score_pos_x = grid_rectangle[0] + (grid_rectangle[2] - grid_rectangle[0]) / 2.0;
         let score_pos_y = grid_rectangle[3] + 50.0;
         self.score.draw_pos(score_pos_x, score_pos_y, c, gl, c.transform, glyph_cache);
+    }
+    pub fn update(&mut self) {
+        for cell in self.cells.flat_iter() {
+            cell.borrow_mut().update();
+        }
     }
     pub(crate) fn move_right(&mut self) {
         match self.game_state {
@@ -230,7 +239,10 @@ impl Layout2048 {
             _ => {}
         }
     }
-    fn before_moving_event(&mut self) {}
+
+    fn before_moving_event(&mut self) {
+        self.history_stack.add(self.cells.clone());
+    }
     fn after_moving_event(&mut self) {
         for cell in self.cells.flat_iter() {
             cell.borrow_mut().update_background();
@@ -302,5 +314,21 @@ impl Layout2048 {
         self.cells.flat_iter().any(|cell2048: Rc<RefCell<Cell2048>>| {
             *cell2048.borrow().value == 2048
         })
+    }
+    pub fn turn_back(&mut self) {
+        match self.game_state {
+            GameState::InGame => {
+                if let Some(previous_grid_cell) = self.history_stack.pop() {
+                    self.console_log.add_message(String::from(format!("Moved back. Left {} turns", self.history_stack.size())));
+                    self.devour(*previous_grid_cell);
+                } else {
+                    self.console_log.add_message(String::from("Can not moved back"));
+                }
+            }
+            _ => { self.console_log.add_message(String::from("Press whitespace to start the game")) }
+        }
+    }
+    fn devour(&mut self, grid_cell2048: GridCell2048) {
+        self.cells = grid_cell2048
     }
 }

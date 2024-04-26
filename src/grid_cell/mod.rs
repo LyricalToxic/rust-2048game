@@ -78,7 +78,7 @@ impl GridCell2048 {
         let cells = (0..size)
             .map(|row| {
                 (0..size)
-                    .map(|col| Rc::new(RefCell::new(Cell2048::new(0, row, col, None))))
+                    .map(|col| Rc::new(RefCell::new(Cell2048::new(0, row, col, None, 0))))
                     .collect::<Vec<Rc<RefCell<Cell2048>>>>()
             })
             .collect::<Vec<Vec<Rc<RefCell<Cell2048>>>>>();
@@ -139,5 +139,21 @@ impl Display for GridCell2048 {
             writeln!(f).expect("");
         }
         Ok(())
+    }
+}
+
+impl Clone for GridCell2048 {
+    fn clone(&self) -> Self {
+        let cells = (0..self.size)
+            .map(|row| {
+                (0..self.size)
+                    .map(|col| Rc::new(RefCell::new(self.get_cell(row, col).borrow().clone())))
+                    .collect::<Vec<Rc<RefCell<Cell2048>>>>()
+            })
+            .collect::<Vec<Vec<Rc<RefCell<Cell2048>>>>>();
+        GridCell2048 {
+            size: self.size,
+            cells: cells,
+        }
     }
 }

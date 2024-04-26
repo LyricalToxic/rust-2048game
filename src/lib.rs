@@ -12,6 +12,7 @@ pub mod position_grid;
 pub mod text_container;
 pub mod console_log_box;
 pub mod score;
+pub mod turns_history;
 
 pub struct Point {
     pub x: Scalar,
